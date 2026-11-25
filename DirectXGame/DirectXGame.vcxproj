@@ -163,18 +163,18 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Boss.cpp" />
-    <ClCompile Include="BossAttackState.cpp" />
-    <ClCompile Include="BossIdleState.cpp" />
-    <ClCompile Include="BossState.cpp" />
+    <ClCompile Include="BombItem.cpp" />
     <ClCompile Include="CameraController.cpp" />
+    <ClCompile Include="Enemy.cpp" />
     <ClCompile Include="GameScene.cpp" />
     <ClCompile Include="Global.cpp" />
     <ClCompile Include="Ground.cpp" />
+    <ClCompile Include="Healitem.cpp" />
     <ClCompile Include="InputManager.cpp" />
+    <ClCompile Include="Item.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Player.cpp" />
-    <ClCompile Include="PlayerWeapon.cpp" />
+    <ClCompile Include="PlayerBullet.cpp" />
     <ClCompile Include="Skydome.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -275,17 +275,17 @@
     <None Include="Resources\shaders\Sprite.hlsli" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Boss.h" />
-    <ClInclude Include="BossAttackState.h" />
-    <ClInclude Include="BossIdleState.h" />
-    <ClInclude Include="BossState.h" />
+    <ClInclude Include="BombItem.h" />
     <ClInclude Include="CameraController.h" />
+    <ClInclude Include="Enemy.h" />
     <ClInclude Include="GameScene.h" />
     <ClInclude Include="Global.h" />
     <ClInclude Include="Ground.h" />
+    <ClInclude Include="Healitem.h" />
     <ClInclude Include="InputManager.h" />
+    <ClInclude Include="Item.h" />
     <ClInclude Include="Player.h" />
-    <ClInclude Include="PlayerWeapon.h" />
+    <ClInclude Include="PlayerBullet.h" />
     <ClInclude Include="Skydome.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

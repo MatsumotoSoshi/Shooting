@@ -192,6 +192,18 @@ Matrix4x4 MakeRotateZMatrix(float radian) {
 	return result;
 }
 
+Matrix4x4 MakeRotateMatrix(const Vector3& rotate) {
+
+	Matrix4x4 rotateX = MakeRotateXMatrix(rotate.x);
+	Matrix4x4 rotateY = MakeRotateYMatrix(rotate.y);
+	Matrix4x4 rotateZ = MakeRotateZMatrix(rotate.z);
+
+	// Z → X → Y の順番で回転
+	Matrix4x4 result = Multiply(rotateZ, Multiply(rotateX, rotateY));
+
+	return result;
+}
+
 //
 Matrix4x4 MakeScaleMatrix(Vector3 scale) {
 	Matrix4x4 result;

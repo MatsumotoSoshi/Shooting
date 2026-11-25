@@ -46,6 +46,7 @@ KamataEngine::Matrix4x4 MakeRotateYMatrix(float radian);
 KamataEngine::Matrix4x4 MakeRotateZMatrix(float radian);
 
 KamataEngine::Matrix4x4 MakeScaleMatrix(KamataEngine::Vector3 scale);
+KamataEngine::Matrix4x4 MakeRotateMatrix(const KamataEngine::Vector3& rotate);
 KamataEngine::Matrix4x4 MakeTranslateMatrix(KamataEngine::Vector3 translate);
 
 KamataEngine::Matrix4x4 MakeAffineMatrix(KamataEngine::Vector3 scale, KamataEngine::Vector3 rotation, KamataEngine::Vector3 translation);

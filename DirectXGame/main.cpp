@@ -7,7 +7,7 @@ using namespace KamataEngine;
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int)
 {
 	// エンジンの初期化
-	Initialize(L"LE2C__26_マツモト_ソウシ");
+	Initialize(L"LE2C__26_マツモト_ソウシ_");
 
 	// ImGuiManagerインスタンスの取得
 	ImGuiManager* imguiManager = ImGuiManager::GetInstance();

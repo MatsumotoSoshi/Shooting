@@ -13,7 +13,7 @@ void Skydome::Initialize(Model* model, Camera* camera, const Vector3& position) 
 
 	worldTransform_.Initialize();
 	worldTransform_.translation_ = position;
-	worldTransform_.scale_ = {200.0f, 200.0f, 200.0f};
+	worldTransform_.scale_ = {1.0f, 1.0f, 1.0f};
 
 	WorldTransformUpdate(worldTransform_);
 }

@@ -1,110 +1,69 @@
 #include "Player.h"
-#include <cmath>
 #include <cassert>
+#include <cmath>
 #include <imgui.h>
-#include "PlayerWeapon.h"
 
 using namespace KamataEngine;
 
 void Player::Initialize(Model* model, Camera* camera, const Vector3& position) {
+
 	assert(model != nullptr);
 	assert(camera != nullptr);
 
 	camera_ = camera;
 	model_ = model;
+	inputManager_ = InputManager::GetInstance();
 
 	worldTransform_.Initialize();
-
 	worldTransform_.translation_ = position;
-
-	// 大きさ
 	worldTransform_.scale_ = {1.0f, 1.0f, 1.0f};
 
-	// 内部数値等初期化
+	// 十字カーソル用テクスチャ
+	cursorTexture_ = TextureManager::Load("white1x1.png");
+
+	// 横線
+	cursorHorizontal_ = Sprite::Create(cursorTexture_, {0.0f, 0.0f});
+
+	// 縦線
+	cursorVertical_ = Sprite::Create(cursorTexture_, {0.0f, 0.0f});
+
 	hp_ = maxHP_;
-	energyGauge_ = 0;
-	isOverFlow_ = false;
-	overflowTimer_ = 0;
-	isJustGuardActive_ = false;
-	justGuardTimer_ = 0;
+	shotTimer_ = 0;
+	shotRequested_ = false;
+	shotDirection_ = {0.0f, 0.0f, 0.0f};
+	hasValidAimDirection_ = false;
 
-	// 行列更新
 	WorldTransformUpdate(worldTransform_);
-
-	 weapon_ = new PlayerWeapon();
-
-	Model* weaponModel = Model::CreateFromOBJ("block");
-	assert(weaponModel != nullptr);
-
-	weapon_->Initialize(weaponModel, camera_);
 }
 
 void Player::Update() {
 
-	JustGuardUpdate();
-	UpdateOverflow();
+	shotRequested_ = false;
 
-	Input* input = Input::GetInstance();
-
-	// 特殊攻撃
-	if (phase_ == AttackPhase::kNone && !isJustGuardActive_ && input->PushKey(DIK_LSHIFT) && input->TriggerKey(DIK_SPACE)) {
-
-		if (!isOverFlow_ && energyGauge_ >= 50) {
-			energyGauge_ -= 50;
-			AttackMoveInitialize(AttackType::kSpecial);
-		}
-	}
-	// 通常攻撃の開始
-	else if (phase_ == AttackPhase::kNone && !isJustGuardActive_ && input->TriggerKey(DIK_SPACE)) {
-
-		AttackMoveInitialize(AttackType::kNormal);
-	}
-	// 通常攻撃のコンボ入力
-	else if (attackType_ == AttackType::kNormal && phase_ == AttackPhase::kRecovery && comboStep_ < kMaxComboStep && input->TriggerKey(DIK_SPACE)) {
-
-		comboInputQueued_ = true;
-	}
-	// ジャストガード開始
-	else if (phase_ == AttackPhase::kNone && !isJustGuardActive_ && input->TriggerKey(DIK_LSHIFT)) {
-
-		// 入力した時点でジャストガード受付開始
-		isJustGuardActive_ = true;
-		justGuardTimer_ = justGuardFrames_;
-	}
-
+	// 移動
 	Move();
 
-	AttackMoveUpdate();
+	// マウスカーソルの方向を計算
+	UpdateAimDirection();
 
-	// 3段目の回転斬り
-	if (comboStep_ == 3) {
+	// 有効な照準方向がある場合だけ射撃
+	Input* input = Input::GetInstance();
 
-		// 回転斬りの開始角度
-		float startAngle = comboStartRotationY_;
-
-		if (phase_ == AttackPhase::kAnticipation) {
-			worldTransform_.rotation_.y = startAngle;
-		} else if (phase_ == AttackPhase::kExecution) {
-
-			float t = static_cast<float>(attackTimer_) / static_cast<float>(executionFrames_);
-
-			if (t > 1.0f) {
-				t = 1.0f;
-			}
-
-			// 360度回転
-			worldTransform_.rotation_.y = startAngle + t * 2.0f * static_cast<float>(M_PI);
-		} else if (phase_ == AttackPhase::kRecovery) {
-			// 一回転した角度を維持
-			worldTransform_.rotation_.y = startAngle + 2.0f * static_cast<float>(M_PI);
-		}
+	if (input->PushKey(DIK_SPACE)) {
+		shotRequested_ = true;
 	}
 
-	// 攻撃種類に応じて武器更新を分ける
-	if (attackType_ == AttackType::kSpecial) {
-		weapon_->UpdateSpecial(worldTransform_, static_cast<int>(phase_), attackTimer_);
+	if (input->IsPressMouse(0) && hasValidAimDirection_) {
+
+		++shotTimer_;
+
+		if (shotTimer_ >= shotIntervalFrames_) {
+			shotTimer_ = 0;
+			shotRequested_ = true;
+		}
+
 	} else {
-		weapon_->UpdateNormal(worldTransform_, static_cast<int>(phase_), attackTimer_, comboStep_, anticipationFrames_, executionFrames_);
+		shotTimer_ = 0;
 	}
 
 	ImGuiUpdate();
@@ -112,132 +71,31 @@ void Player::Update() {
 	WorldTransformUpdate(worldTransform_);
 }
 
-void Player::ImGuiUpdate() {
+void Player::UpdateAimDirection() {
 
-	ImGui::Begin("Player");
+	hasValidAimDirection_ = false;
+	shotDirection_ = {0.0f, 0.0f, 0.0f};
 
-	// =========================
-	// 行動状態
-	// =========================
+	Vector3 aimPosition;
 
-	ImGui::Text("Action State");
-
-	// 攻撃段階
-	const char* phaseName = "";
-
-	switch (phase_) {
-	case AttackPhase::kNone:
-		phaseName = "None";
-		break;
-
-	case AttackPhase::kAnticipation:
-		phaseName = "Anticipation";
-		break;
-
-	case AttackPhase::kExecution:
-		phaseName = "Execution";
-		break;
-
-	case AttackPhase::kRecovery:
-		phaseName = "Recovery";
-		break;
+	if (!GetMouseWorldPosition(aimPosition)) {
+		return;
 	}
 
-	ImGui::Text("Phase : %s", phaseName);
+	Vector3 direction = aimPosition - worldTransform_.translation_;
 
-	// 攻撃種類
-	const char* attackName = "";
+	direction.y = 0.0f;
 
-	switch (attackType_) {
-	case AttackType::kNormal:
-		attackName = "Normal";
-		break;
+	float length = std::sqrt(direction.x * direction.x + direction.z * direction.z);
 
-	case AttackType::kSpecial:
-		attackName = "Special";
-		break;
+	if (length <= 0.001f) {
+		return;
 	}
 
-	ImGui::Text("Attack Type : %s", attackName);
+	direction /= length;
 
-	// 攻撃タイマー
-	ImGui::Text("Attack Timer : %d", attackTimer_);
-
-	// =========================
-	// ジャストガード
-	// =========================
-
-	ImGui::Separator();
-
-	ImGui::Text("Just Guard");
-
-	ImGui::Text("Active : %s", isJustGuardActive_ ? "True" : "False");
-
-	ImGui::Text("Timer : %d", justGuardTimer_);
-
-	// =========================
-	// 移動設定
-	// =========================
-
-	ImGui::Separator();
-
-	ImGui::Text("Movement Settings");
-
-	ImGui::SliderFloat("Move Speed", &moveSpeed_, 0.0f, 1.0f);
-
-	// =========================
-	// 攻撃設定
-	// =========================
-
-	ImGui::Separator();
-
-	ImGui::Text("Attack Settings");
-
-	ImGui::SliderInt("Anticipation Frames", &anticipationFrames_, 1, 120);
-
-	ImGui::SliderInt("Execution Frames", &executionFrames_, 1, 120);
-
-	ImGui::SliderInt("Recovery Frames", &recoveryFrames_, 1, 120);
-
-	// =========================
-	// ジャストガード設定
-	// =========================
-
-	ImGui::Separator();
-
-	ImGui::Text("Just Guard Settings");
-
-	ImGui::SliderInt("Just Guard Frames", &justGuardFrames_, 1, 60);
-
-	// =========================
-	// エネルギーゲージ
-	// =========================
-
-	ImGui::Separator();
-
-	ImGui::Text("energy Gauge");
-
-	ImGui::SliderInt("energyGauge", &energyGauge_, 0, kMaxGuage);
-
-	ImGui::Separator();
-
-	ImGui::Text("HP %d", hp_);
-
-	ImGui::End();
-
-	if (weapon_ != nullptr) {
-		weapon_->ImGuiUpdate();
-	}
-}
-
-void Player::Draw() {
-	assert(model_ != nullptr);
-	assert(camera_ != nullptr);
-
-	// メンバーのObjectColorを使用して描画
-	model_->Draw(worldTransform_, *camera_);
-
-	weapon_->Draw();
+	shotDirection_ = direction;
+	hasValidAimDirection_ = true;
 }
 
 void Player::Move() {
@@ -288,189 +146,48 @@ void Player::Move() {
 	WorldTransformUpdate(worldTransform_);
 }
 
-void Player::AttackMoveInitialize(AttackType type) {
+void Player::Draw() {
 
-	// 新しい攻撃を開始するため命中フラグをリセット
-	hasHitBoss_ = false;
+	assert(model_ != nullptr);
+	assert(camera_ != nullptr);
 
-	attackType_ = type;
+	model_->Draw(worldTransform_, *camera_);
 
-	phase_ = AttackPhase::kAnticipation;
-
-	attackTimer_ = 0;
-
-	// 通常攻撃の初段
-	if (type == AttackType::kNormal) {
-		comboStep_ = 1;
-		comboInputQueued_ = false;
-	} else {
-		// 特殊攻撃はコンボ段数に含めない
-		comboInputQueued_ = false;
-	}
-}
-
-void Player::AttackMoveUpdate() {
-	// 攻撃していない場合
-	if (phase_ == AttackPhase::kNone) {
+	if (inputManager_ == nullptr) {
 		return;
 	}
 
-	// 経過フレーム加算
-	attackTimer_++;
+	// マウス座標
+	Vector2 mousePosition = inputManager_->GetMouseScreenPosition();
 
-	switch (phase_) {
+	// 十字カーソルのサイズ
+	const float cursorLength = 24.0f;
+	const float cursorThickness = 2.0f;
 
-	case AttackPhase::kAnticipation:
+	// 横線の位置・サイズ
+	cursorHorizontal_->SetPosition({mousePosition.x - cursorLength * 0.5f, mousePosition.y - cursorThickness * 0.5f});
 
-		if (attackTimer_ >= anticipationFrames_) {
-			phase_ = AttackPhase::kExecution;
-			attackTimer_ = 0;
-		}
+	cursorHorizontal_->SetSize({cursorLength, cursorThickness});
 
-		break;
+	// 縦線の位置・サイズ
+	cursorVertical_->SetPosition({mousePosition.x - cursorThickness * 0.5f, mousePosition.y - cursorLength * 0.5f});
 
-	case AttackPhase::kExecution:
+	cursorVertical_->SetSize({cursorThickness, cursorLength});
 
-		if (attackTimer_ >= executionFrames_) {
+	Sprite::PreDraw();
 
-			// 攻撃処理をここに追加する
+	// 描画
+	cursorHorizontal_->Draw();
+	cursorVertical_->Draw();
 
-			phase_ = AttackPhase::kRecovery;
-			attackTimer_ = 0;
-		}
-
-		break;
-
-	case AttackPhase::kRecovery:
-
-		if (attackTimer_ >= recoveryFrames_) {
-
-			// 次段の入力が予約されている場合
-			if (attackType_ == AttackType::kNormal && comboInputQueued_ && comboStep_ < kMaxComboStep) {
-
-				++comboStep_;
-
-				// 次のコンボ段では再び命中判定を有効にする
-				hasHitBoss_ = false;
-
-				// 3段目開始時のプレイヤーの向きを保存
-				if (comboStep_ == 3) {
-					comboStartRotationY_ = worldTransform_.rotation_.y;
-				}
-
-				phase_ = AttackPhase::kAnticipation;
-				attackTimer_ = 0;
-				comboInputQueued_ = false;
-
-			} else {
-
-				// コンボ終了
-				phase_ = AttackPhase::kNone;
-				attackTimer_ = 0;
-				comboStep_ = 0;
-				comboInputQueued_ = false;
-			}
-		}
-
-		break;
-
-	default:
-		break;
-	}
-
-}
-
-void Player::JustGuardUpdate() {
-
-	// ジャストガード中でなければ終了
-	if (!isJustGuardActive_) {
-		return;
-	}
-
-	// 受付時間を減らす
-	--justGuardTimer_;
-
-	if (justGuardTimer_ <= 0) {
-		justGuardTimer_ = 0;
-		isJustGuardActive_ = false;
-	}
-}
-
-bool Player::CheckJustGuard(bool enemyAttackActive, int gaugeAmount, bool isBigAttack) {
-
-	if (!isJustGuardActive_) {
-		return false;
-	}
-
-	if (!enemyAttackActive) {
-		return false;
-	}
-
-	if (isBigAttack) {
-
-		// 大技のジャストガードは必ずオーバーフローにする
-		if (energyGauge_ <= kMaxGuage) {
-			energyGauge_ = kMaxGuage + 1;
-		}
-
-		isOverFlow_ = true;
-		overflowTimer_ = overflowFrames_;
-
-	} else if (!isOverFlow_) {
-
-		// 通常攻撃のジャストガードによるゲージ獲得
-		energyGauge_ += gaugeAmount;
-
-		// 100を超えた場合はオーバーフロー
-		if (energyGauge_ > kMaxGuage) {
-			isOverFlow_ = true;
-			overflowTimer_ = overflowFrames_;
-		}
-	}
-
-	// オーバーフロー中でもジャストガード自体は成立する
-	isJustGuardActive_ = false;
-	justGuardTimer_ = 0;
-
-	return true;
-}
-
-OBB Player::GetBodyOBB() const {
-	Vector3 center = worldTransform_.translation_;
-
-	Matrix4x4 rotateY = MakeRotateYMatrix(worldTransform_.rotation_.y);
-	Vector3 offset = TransformConversion(bodyOBBOffset_, rotateY);
-	center += offset;
-
-	Vector3 size = {bodyOBBSize_.x * worldTransform_.scale_.x, bodyOBBSize_.y * worldTransform_.scale_.y, bodyOBBSize_.z * worldTransform_.scale_.z};
-
-	return MakeOBB(center, size, worldTransform_.rotation_);
-}
-
-void Player::ApplyHorizontalCorrection(const Vector3& correction) {
-	worldTransform_.translation_.x += correction.x;
-	worldTransform_.translation_.z += correction.z;
-
-	// Y座標は変更しない
-	WorldTransformUpdate(worldTransform_);
-}
-
-void Player::GainEnergyGauge(int amount) {
-
-	// オーバーフロー中はゲージを獲得しない
-	if (isOverFlow_) {
-		return;
-	}
-
-	energyGauge_ += amount;
-
-	if (energyGauge_ > kMaxGuage) {
-		isOverFlow_ = true;
-		overflowTimer_ = overflowFrames_;
-	}
+	Sprite::PostDraw();
 }
 
 void Player::TakeDamage(int damage) {
+
+	if (damage <= 0 || hp_ <= 0) {
+		return;
+	}
 
 	hp_ -= damage;
 
@@ -479,23 +196,93 @@ void Player::TakeDamage(int damage) {
 	}
 }
 
-void Player::UpdateOverflow() {
+bool Player::GetMouseWorldPosition(Vector3& worldPosition) {
 
-	if (!isOverFlow_) {
-		return;
+	if (camera_ == nullptr || inputManager_ == nullptr) {
+		return false;
 	}
 
-	// ゲージを0にする
-	energyGauge_ = 0;
-	
-	--overflowTimer_;
+	// マウス座標
+	Vector2 mousePosition = inputManager_->GetMouseScreenPosition();
 
-	if (overflowTimer_ <= 0) {
-		overflowTimer_ = 0;
-		isOverFlow_ = false;
+	// 画面サイズ
+	const float screenWidth = 1280.0f;
+	const float screenHeight = 720.0f;
+
+	// NDC座標に変換
+	float ndcX = (mousePosition.x / screenWidth) * 2.0f - 1.0f;
+
+	float ndcY = 1.0f - (mousePosition.y / screenHeight) * 2.0f;
+
+	// カメラの視野角
+	// 実際のカメラ設定と合わせる必要がある
+	const float fovAngleY = 0.45f;
+
+	float aspectRatio = screenWidth / screenHeight;
+
+	float tanHalfFov = std::tan(fovAngleY * 0.5f);
+
+	// カメラ空間のレイ方向
+	Vector3 rayDirection = {ndcX * aspectRatio * tanHalfFov, ndcY * tanHalfFov, 1.0f};
+
+	// カメラの回転を反映
+	Matrix4x4 rotateMatrix = MakeRotateMatrix(camera_->rotation_);
+
+	rayDirection = TransformConversion(rayDirection, rotateMatrix);
+
+	// 正規化
+	float length = std::sqrt(rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z);
+
+	if (length <= 0.001f) {
+		return false;
 	}
+
+	rayDirection /= length;
+
+	// 地面との交点
+	const float groundHeight = worldTransform_.translation_.y;
+
+	// レイが地面方向を向いていない場合
+	if (rayDirection.y >= -0.001f) {
+		return false;
+	}
+
+	float t = (groundHeight - camera_->translation_.y) / rayDirection.y;
+
+	if (t <= 0.0f) {
+		return false;
+	}
+
+	worldPosition = camera_->translation_ + rayDirection * t;
+
+	return true;
 }
 
-Player::~Player() { 
-	delete weapon_;
+void Player::ImGuiUpdate() {
+
+	ImGui::Begin("Player");
+
+	ImGui::Text("HP : %d / %d", hp_, maxHP_);
+
+	ImGui::Separator();
+
+	ImGui::Text("Movement Settings");
+
+	ImGui::SliderFloat("Move Speed", &moveSpeed_, 0.0f, 1.0f);
+
+	ImGui::Separator();
+
+	ImGui::Text("Shooting Settings");
+
+	ImGui::SliderInt("Shot Interval", &shotIntervalFrames_, 1, 120);
+
+	ImGui::Text("Shot Timer : %d", shotTimer_);
+
+	ImGui::End();
+}
+
+Player::~Player() {
+
+	delete cursorHorizontal_;
+	delete cursorVertical_;
 }
